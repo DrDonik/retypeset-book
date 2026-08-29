@@ -16,12 +16,20 @@ seit August 2026 für sich, weil es mit deren Code nie etwas zu tun hatte.
    Signatur der Quelle, der Durchschuss, die Bildschwellen: jede Konstante hat
    einen Kommentar, der sagt, woher sie kommt. Wer eine ändert, misst neu und
    schreibt hin, woran.
-3. **Nie direkt implementieren.** Erst den Plan und das Ergebnis für den, der
+3. **Kein Modell im Werkzeug.** Die Auslese ist deterministisch: die
+   Schriftgröße sagt, was ein Element ist, und sonst entscheidet nichts.
+   Kein Aufruf an ein Sprachmodell, kein Schlüssel, kein Dienst. Das ist
+   die Zusage aus [ADR 37](https://github.com/DrDonik/super-vorlese-app/blob/main/doc/adr/0037-no-ai-joins-the-reading.md)
+   der App, und sie ist mit umgezogen. Wer für ein Buch aus anderer Quelle
+   von Hand ein `buch.json` mit einem Modell erzeugt, tut Handarbeit
+   außerhalb dieses Repos — erlaubt, aber es wird kein Bestandteil des
+   Werkzeugs.
+4. **Nie direkt implementieren.** Erst den Plan und das Ergebnis für den, der
    vorliest, darstellen, dann auf ausdrückliche Zusage hin bauen.
-4. **Geprüft wird an einer gesetzten Seite, die jemand ansieht** — es gibt
+5. **Geprüft wird an einer gesetzten Seite, die jemand ansieht** — es gibt
    keine Tests und keinen Linter, und das bleibt so. `--preview` rendert
    Stichprobenseiten als PNG genau dafür.
-5. **Persönliches Werkzeug.** Ein Maintainer, alle Bücher lokal. Ältere
+6. **Persönliches Werkzeug.** Ein Maintainer, alle Bücher lokal. Ältere
    `buch.json` dürfen brechen; Migrationspfade braucht es nicht.
-6. **Kommentare und Ausgaben auf Deutsch**, Bezeichner im Code auf Englisch —
+7. **Kommentare und Ausgaben auf Deutsch**, Bezeichner im Code auf Englisch —
    so ist das Skript geschrieben.
