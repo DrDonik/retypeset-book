@@ -1,0 +1,10 @@
+# Die Bücher selbst. Für die Geschichten und Illustrationen gibt es keine
+# Lizenz zum Weitergeben — hier wohnt nur das Werkzeug.
+downloads/
+work/
+processed/
+retypeset/
+scans/
+
+__pycache__/
+.DS_Store
