@@ -49,9 +49,11 @@ jeweilige Buch gerade brauchte.
 
 ## Voraussetzungen
 
-- Python 3
-- [PyMuPDF](https://pymupdf.readthedocs.io) — `pip3 install pymupdf`
-- [Typst](https://typst.app) — `brew install typst`
+Vorhanden sein müssen, gleich auf welchem Weg installiert:
+
+- Python 3.9 oder neuer
+- [PyMuPDF](https://pymupdf.readthedocs.io), importierbar für dieses Python
+- [Typst](https://typst.app), als Programm `typst` im `PATH`
 
 ## Benutzung
 

@@ -960,6 +960,11 @@ def main():
     )
     args = parser.parse_args()
 
+    # Jeder Aufruf endet beim Setzen. Früh prüfen, damit ein fehlendes typst
+    # nicht erst auffällt, wenn die Quellen schon nach processed/ gewandert sind.
+    if shutil.which("typst") is None:
+        sys.exit("Fehlt: typst. Das Programm muss im PATH liegen, siehe https://typst.app.")
+
     # Ein Ordner ist ein bereits ausgelesenes Buch und will nur neu gesetzt werden.
     if len(args.quellen) == 1 and args.quellen[0].is_dir():
         build(args.quellen[0], preview=args.preview)
