@@ -32,6 +32,10 @@ Dieses Skript setzt die Bücher noch einmal, mit Typst.
   wenn eine Zeile sonst unschön kurz bliebe.
 - **Illustrationen schwimmen** statt ein Loch zu lassen, und werden nie über
   ihre Größe in der Quelle hinaus vergrößert.
+- **Bilderbücher behalten ihre Seiten.** Kommen auf ein Bild weniger als 7
+  Zeilen Text, liefen schwimmende Bilder dem Text davon. Dann wird jede Seite
+  der Quelle genau eine Seite, Bild und Text bleiben beisammen. Passt eine
+  Seite nicht, werden die Bilder kleiner (bis 80 %), der Text nie.
 - **Betonung bleibt.** Kursives und die Medium-Schnitte der Quelle — gerufene
   Wörter wie „Nein!" und „PING!" — überleben, weil beide sagen, wie ein Satz
   klingen soll.
@@ -89,6 +93,11 @@ Absätzen, Überschriften und Bildern. Was im fertigen PDF falsch aussieht — e
 Kapitelgrenze an der falschen Stelle, ein zerrissener Absatz, ein Bild, das drei
 Seiten zu früh kommt — wird dort korrigiert. Danach den Arbeitsordner erneut
 übergeben, beliebig oft; die Korrektur überlebt jeden Rebuild.
+
+Bei Bilderbüchern steht dort zusätzlich `"picture_book": true`, und
+`{"type": "pagebreak"}` markiert jede Seitengrenze der Quelle. Eine Marke zu
+verschieben verschiebt die Seitengrenze; `false` setzt das Buch wie jedes andere
+mit schwimmenden Bildern.
 
 Deshalb läuft das Setzen auch gleich nach dem Auslesen durch: Ein Rezept will
 niemand um seiner selbst willen ansehen. Der Grund, hineinzuschauen, ist etwas

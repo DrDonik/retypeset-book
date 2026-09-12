@@ -67,6 +67,13 @@ PARAGRAPH_GAP = 25
 MIN_ILLUSTRATION_WIDTH = 200
 MIN_COVER_WIDTH = 100
 
+# Bilderbuch heißt: wenig Text je Illustration. Gezählt sind Fließtextzeilen
+# der Quelle je Bild, über alle 33 Bücher im Korpus: "Ist okay" 4.0 und
+# "Tomke gräbt" 4.7, danach kommt erst "Sommerzeit ist Beerenzeit!" mit 9.6
+# — und das setzt sich mit schwimmenden Bildern gut. Die Schwelle liegt in
+# der Lücke dazwischen.
+MAX_LINES_PER_IMAGE = 7
+
 META_LABELS = {
     "Geschrieben von": "author",
     "Illustriert von": "illustrator",
@@ -281,6 +288,7 @@ def extract(pdf_paths, out_dir):
     skipped_ends = 0
     skipped_duplicates = 0
     seen_pages: set[str] = set()
+    body_lines = 0
 
     for pdf_path in pdf_paths:
         doc = pymupdf.open(pdf_path)
@@ -322,6 +330,11 @@ def extract(pdf_paths, out_dir):
                     continue
                 seen_pages.add(fingerprint)
 
+            # Wo eine Quellseite endet, weiß später nur noch diese Marke. Ein
+            # Bilderbuch braucht sie, alle anderen Bücher verlieren sie unten.
+            if blocks and blocks[-1]["type"] != "pagebreak":
+                blocks.append({"type": "pagebreak"})
+
             previous_y = None
             for kind, y, value in items:
                 if kind == "img":
@@ -349,6 +362,7 @@ def extract(pdf_paths, out_dir):
                     continue
                 if size != SIZE_BODY:
                     continue
+                body_lines += 1
 
                 starts_paragraph = previous_y is None or (y - previous_y) > PARAGRAPH_GAP
                 if starts_paragraph or not blocks or blocks[-1]["type"] != "paragraph":
@@ -364,6 +378,15 @@ def extract(pdf_paths, out_dir):
                     blocks[-1] = as_block(merge_runs(previous_runs, runs))
                 previous_y = y
         doc.close()
+
+    # Im Bilderbuch gehören Bild und Text so zusammen, wie die Quellseite sie
+    # stellt — ob das Bild vor oder nach seinem Text steht, wechselt von Seite
+    # zu Seite. Deshalb bleiben dort die Seitengrenzen der Quelle erhalten.
+    while blocks and blocks[-1]["type"] == "pagebreak":
+        blocks.pop()
+    picture_book = bool(image_index) and body_lines / image_index < MAX_LINES_PER_IMAGE
+    if not picture_book:
+        blocks = [block for block in blocks if block["type"] != "pagebreak"]
 
     if not meta.get("title"):
         raise SystemExit(
@@ -386,11 +409,13 @@ def extract(pdf_paths, out_dir):
         "sources": [Path(p).name for p in pdf_paths],
         "blocks": blocks,
     }
+    if picture_book:
+        recipe["picture_book"] = True
     (out_dir / "buch.json").write_text(
         json.dumps(recipe, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
-    counts = {kind: 0 for kind in ("paragraph", "heading", "image")}
+    counts = {kind: 0 for kind in ("paragraph", "heading", "image", "pagebreak")}
     for block in blocks:
         counts[block["type"]] += 1
     print(f"„{meta['title']}“")
@@ -398,6 +423,11 @@ def extract(pdf_paths, out_dir):
         f"  {counts['paragraph']} Absätze, {counts['heading']} Kapitel, "
         f"{counts['image']} Bilder"
     )
+    if picture_book:
+        print(
+            f"  Bilderbuch ({body_lines / image_index:.1f} Zeilen je Bild): "
+            f"{counts['pagebreak'] + 1} Quellseiten bleiben je eine Seite"
+        )
     if skipped_covers or skipped_ends:
         print(
             f"  übersprungen: {skipped_covers} weitere Coverseite(n), "
@@ -491,19 +521,33 @@ def quote(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def image_call(block) -> str:
+def image_call(block, picture_book=False) -> str:
     """Bild in Originalgröße, aber nie breiter als der Satzspiegel."""
     width = block["width_cm"]
     height = block["height_cm"]
     if width > MAX_IMAGE_WIDTH_CM:
         height *= MAX_IMAGE_WIDTH_CM / width
         width = MAX_IMAGE_WIDTH_CM
-    return f'#abbildung({quote("bilder/" + block["file"])}, {width:.2f}cm, {height:.2f}cm)'
+    path = quote("bilder/" + block["file"])
+    if picture_book:
+        return f"#bild({path}, {width:.2f}cm, {height:.2f}cm, faktor)"
+    return f"#abbildung({path}, {width:.2f}cm, {height:.2f}cm)"
 
 
-def render_typst(recipe) -> str:
+def source_pages(blocks):
+    """Blöcke eines Bilderbuchs, gruppiert nach ihrer Quellseite."""
+    pages = [[]]
+    for block in blocks:
+        if block["type"] == "pagebreak":
+            pages.append([])
+        else:
+            pages[-1].append(block)
+    return [page for page in pages if page]
+
+
+def structure(recipe):
+    """Blöcke ohne Titeldublette und ob die Überschriften Kapitel sind."""
     meta = recipe["meta"]
-    page = recipe["page"]
     blocks = recipe["blocks"]
 
     # Kurze Bücher wiederholen den Buchtitel als einzige Überschrift. Nach der
@@ -532,6 +576,14 @@ def render_typst(recipe) -> str:
             if b["type"] == "paragraph"
         )
         has_chapters = before_first <= 0.25 * paragraphs
+    return blocks, has_chapters
+
+
+def render_typst(recipe) -> str:
+    meta = recipe["meta"]
+    page = recipe["page"]
+    picture_book = recipe.get("picture_book", False)
+    blocks, has_chapters = structure(recipe)
 
     imprint = []
     if meta.get("author"):
@@ -621,6 +673,40 @@ def render_typst(recipe) -> str:
         ")",
         "",
     ]
+    if picture_book:
+        lines += [
+            "// Bilderbuch: Jede Seite der Quelle wird genau eine Seite. Dort hat",
+            "// der Verlag Bild und Text zusammengestellt, und schwimmende Bilder",
+            "// liefen dem knappen Text davon. Die Bilder stehen deshalb fest an",
+            "// ihrem Platz. Wird eine Seite zu voll, werden nur die Bilder kleiner,",
+            "// der Text nie — höchstens auf MIN-FAKTOR, danach läuft der Text auf",
+            "// die nächste Seite weiter. Die Untergrenze ist gewählt: gebraucht",
+            "// wurden im Korpus höchstens 85 % (\"Tomke gräbt\", Seite 3).",
+            f"#let SATZBREITE = {page['width_cm'] - 2 * page['margin_cm']:.2f}cm",
+            f"#let SATZHOEHE = {page['height_cm'] - 2 * page['margin_cm']:.2f}cm",
+            "#let MIN-FAKTOR = 0.8",
+            "#let bild(pfad, breite, hoehe, faktor) = block(width: 100%, "
+            "above: 1.2em, below: 1.2em,",
+            "  align(center, image(pfad, width: breite * faktor, "
+            "height: hoehe * faktor)))",
+            "",
+            "// Die Bildhöhe wächst linear mit dem Faktor, der Text bleibt gleich:",
+            "// Zwei Messungen genügen, um den Faktor zu finden, bei dem die Seite",
+            "// genau voll ist.",
+            "#let bildseite(inhalt) = {",
+            "  pagebreak(weak: true)",
+            "  context {",
+            "    let hoehe(faktor) = measure(inhalt(faktor), width: SATZBREITE).height",
+            "    let voll = hoehe(1)",
+            "    let bilder = (voll - hoehe(MIN-FAKTOR)) / (1 - MIN-FAKTOR)",
+            "    let faktor = if voll <= SATZHOEHE or bilder == 0pt { 1 } else {",
+            "      calc.max(MIN-FAKTOR, 1 - (voll - SATZHOEHE) / bilder)",
+            "    }",
+            "    inhalt(faktor)",
+            "  }",
+            "}",
+            "",
+        ]
 
     # ── Titelseite ─────────────────────────────────────────────────────────
     # Diese Seite ist eine Schnittstelle, kein bloßer Schmuck: Die Super
@@ -729,8 +815,26 @@ def render_typst(recipe) -> str:
         ]
 
     # ── Korpus ─────────────────────────────────────────────────────────────
+    if picture_book:
+        for group in source_pages(blocks):
+            lines.append("#bildseite(faktor => [")
+            for block in group:
+                if block["type"] == "heading":
+                    call = "heading" if has_chapters else "zwischentitel"
+                    lines.append(f'#{call}[{escape(block["text"])}]')
+                elif block["type"] == "image":
+                    lines.append(image_call(block, picture_book=True))
+                else:
+                    lines.append(inline(block))
+                lines.append("")
+            lines[-1] = "])"
+            lines.append("")
+        return "\n".join(lines) + "\n"
+
     first_heading = True
     for block in blocks:
+        if block["type"] == "pagebreak":
+            continue  # "picture_book" von Hand abgeschaltet
         if block["type"] == "heading":
             if not has_chapters:
                 lines.append(f'#zwischentitel[{escape(block["text"])}]')
@@ -786,6 +890,16 @@ def build(work_dir, preview=False):
 
     doc = pymupdf.open(pdf_path)
     page_count = len(doc)
+    if recipe.get("picture_book"):
+        # Mehr Seiten als Quellseiten heißt: Irgendwo reichte das Verkleinern
+        # der Bilder nicht, und Text ist auf eine Folgeseite gerutscht.
+        blocks, has_chapters = structure(recipe)
+        expected = 1 + has_chapters + len(source_pages(blocks))
+        if page_count > expected:
+            print(
+                f"  ACHTUNG: {page_count - expected} Quellseite(n) passen nicht auf "
+                "eine Seite —\n  dort läuft der Text weiter. Bitte ansehen."
+            )
     if preview:
         preview_dir = work_dir / "vorschau"
         if preview_dir.exists():
